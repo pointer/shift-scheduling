@@ -101,22 +101,19 @@ def generate_schedule(start_date, end_date):
                 model += lpSum(x[k, e.id, d, l, t] for l in Pi for t in Lambda) + \
                          lpSum(x[k, e.id, d+1, l, t] for l in Pi for t in Lambda) <= w[k, e.id]
 
-    # Define the objective function (C4.1)
-    preference_index = lpSum(C_combined[k, e.id, l, t] * x[k, e.id, d, l, t] for k in K for e in Phi[k] for d in range(Gamma) for l in Pi for t in Lambda) + \
-                       lpSum(C3[k, e.id, d] * (w[k, e.id] - z[k, e.id, d]) for k in K for e in Phi[k] for d in range(Gamma))
+    # Define the objective function components
+    preference_index = lpSum(C_combined[k, e.id, l, t] * x[k, e.id, d, l, t] for k in K for e in Phi[k] for d in range(Gamma) for l in Pi for t in Lambda)
+    off_day_preference = lpSum(C3[k, e.id, d] * (w[k, e.id] - z[k, e.id, d]) for k in K for e in Phi[k] for d in range(Gamma))
+    absolute_difference = lpSum(v[k, e.id] for k in K for e in Phi[k])
 
+    # Set the objective to maximize the preference index and minimize the absolute difference
+    model += 0.4 * preference_index + 0.4 * off_day_preference - 0.2 * absolute_difference
 
-    # Define Delta parameter
-    Delta = {(k, e.id): lpSum(x[k, e.id, d, l, t] for d in range(Gamma) for l in Pi for t in Lambda) for k in K for e in Phi[k]}
-
-    # Absolute difference constraints (C4.2) and (C4.3)
+    # Add constraints for the absolute difference
     for k in K:
         for e in Phi[k]:
-            model += v[k, e.id] >= Delta[k, e.id] - Delta_k[k] - (1 - w[k, e.id]) * (Delta_max - Delta_min)
-            model += v[k, e.id] >= Delta_k[k] - Delta[k, e.id] - (1 - w[k, e.id]) * (Delta_max - Delta_min)
-    
-    # Set the objective to maximize the preference index
-    model += preference_index
+            model += v[k, e.id] >= Delta[k, e.id] - Delta_k[k]
+            model += v[k, e.id] >= Delta_k[k] - Delta[k, e.id]
 
     # Solve the model
     model.solve()
