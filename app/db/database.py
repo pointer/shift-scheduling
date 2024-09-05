@@ -11,14 +11,21 @@ from icecream import ic
 import aiomysql
 from aiomysql import DictCursor
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+
 engine = create_async_engine(settings.SQLALCHEMY_DATABASE_URL, echo=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
 
 Base = declarative_base()
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+@asynccontextmanager
+async def get_db():
+    async with SessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()

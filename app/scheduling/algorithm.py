@@ -6,56 +6,57 @@ from app.db.models import Employee, WorkCenter, Shift, Schedule, ScheduleAssignm
 from pulp import *
 import random
 from datetime import timedelta
+from app.db.database import get_db
 
-def generate_schedule(start_date, end_date):
-    # Get all employees and work centers from the database
-    db = next(get_db())
-    employees = db.query(Employee).all()
-    work_centers = db.query(WorkCenter).all()
+async def generate_schedule(start_date, end_date):
+    async with get_db() as db:
+        # Get all employees and work centers from the database
+        employees = db.query(Employee).all()
+        work_centers = db.query(WorkCenter).all()
 
-    # Define sets
-    K = range(1, len(set(e.category_id for e in employees)) + 1)
-    Phi = {k: [e for e in employees if e.category_id == k] for k in K}
-    Gamma = (end_date - start_date).days + 1
-    Pi = range(1, len(work_centers) + 1)
-    Lambda = range(1, 4)  # 3 shifts
+        # Define sets
+        K = range(1, len(set(e.category_id for e in employees)) + 1)
+        Phi = {k: [e for e in employees if e.category_id == k] for k in K}
+        Gamma = (end_date - start_date).days + 1
+        Pi = range(1, len(work_centers) + 1)
+        Lambda = range(1, 4)  # 3 shifts
 
-    schedule = Schedule(start_date=start_date, end_date=end_date)
-    assignments = []
+        schedule = Schedule(start_date=start_date, end_date=end_date)
+        assignments = []
 
-    # Initial Step
-    k = 1
-    Phi_prime = Phi[1]
-    Omega = set()
-    P = 0
+        # Initial Step
+        k = 1
+        Phi_prime = Phi[1]
+        Omega = set()
+        P = 0
 
-    while k <= len(K):
-        model = create_hesm_model(k, Phi_prime, Gamma, Pi, Lambda, work_centers, assignments)
-        status = model.solve()
+        while k <= len(K):
+            model = create_hesm_model(k, Phi_prime, Gamma, Pi, Lambda, work_centers, assignments)
+            status = model.solve()
 
-        if status == LpStatusOptimal:
-            new_assignments = extract_assignments(model, k, Phi_prime, Gamma, Pi, Lambda, start_date)
-            assignments.extend(new_assignments)
-            P += calculate_cost(new_assignments)
-            
-            # Update Omega and Phi_prime
-            Omega.update(e.id for e in Phi_prime if any(a.shift.employee_id == e.id for a in new_assignments))
-            Phi_prime = update_phi_prime(Phi, k, Omega)
-            
-            k += 1
-        else:
-            # If HESM_k is infeasible, implement heuristic
-            heuristic_assignments = apply_heuristic(k, Phi_prime, Gamma, Pi, Lambda, work_centers, assignments)
-            assignments.extend(heuristic_assignments)
-            P += calculate_cost(heuristic_assignments)
-            
-            # Update Omega and Phi_prime
-            Omega.update(e.id for e in Phi_prime if any(a.shift.employee_id == e.id for a in heuristic_assignments))
-            Phi_prime = update_phi_prime(Phi, k, Omega)
-            
-            k += 1
+            if status == LpStatusOptimal:
+                new_assignments = extract_assignments(model, k, Phi_prime, Gamma, Pi, Lambda, start_date)
+                assignments.extend(new_assignments)
+                P += calculate_cost(new_assignments)
+                
+                # Update Omega and Phi_prime
+                Omega.update(e.id for e in Phi_prime if any(a.shift.employee_id == e.id for a in new_assignments))
+                Phi_prime = update_phi_prime(Phi, k, Omega)
+                
+                k += 1
+            else:
+                # If HESM_k is infeasible, implement heuristic
+                heuristic_assignments = apply_heuristic(k, Phi_prime, Gamma, Pi, Lambda, work_centers, assignments)
+                assignments.extend(heuristic_assignments)
+                P += calculate_cost(heuristic_assignments)
+                
+                # Update Omega and Phi_prime
+                Omega.update(e.id for e in Phi_prime if any(a.shift.employee_id == e.id for a in heuristic_assignments))
+                Phi_prime = update_phi_prime(Phi, k, Omega)
+                
+                k += 1
 
-    return schedule, assignments
+        return schedule, assignments
 
 def create_hesm_model(k, Phi_k, Gamma, Pi, Lambda, work_centers, existing_assignments):
     model = LpProblem(f"HESM_{k}", LpMinimize)

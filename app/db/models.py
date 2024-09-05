@@ -17,6 +17,7 @@ class WorkCenter(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), index=True)
+    demand: Mapped[Dict[str, Any]] = Column(JSON)
 
 class Employee(Base):
     __tablename__ = "employees"
@@ -103,3 +104,14 @@ class ScheduleCreate(BaseModel):
 class ScheduleAssignmentCreate(BaseModel):
     schedule_id: int
     shift_id: int
+    
+class EmployeeResponse(BaseModel):
+    id: int
+    name: str
+    category_id: int
+    off_day_preferences: Dict[str, int]
+    shift_preferences: List[int]
+    work_center_preferences: List[int]
+    delta: float
+    class Config:
+        orm_mode = True

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import EmployeeCreate, ShiftCreate, ScheduleCreate, ScheduleAssignmentCreate, EmployeeCategoryCreate, WorkCenterCreate
 from app.db.database import get_db
 from app.db import models as db_models
@@ -10,18 +11,13 @@ import json
 
 router = APIRouter()
 
-@router.post("/employees")
-async def create_employee(employee: EmployeeCreate, db: Session = Depends(get_db), current_user: str = Depends(get_current_user)):
-    db_employee = db_models.Employee(
-        name=employee.name,
-        category_id=employee.category_id,
-        off_day_preferences=employee.off_day_preferences,
-        shift_preferences=employee.shift_preferences,
-        work_center_preferences=employee.work_center_preferences
-    )
+# @router.post("/employees", response_model=db_models.Employee)
+@router.post("/employees", response_model=db_models.EmployeeResponse)
+async def create_employee(employee: db_models.EmployeeCreate, db: AsyncSession = Depends(get_db)):
+    db_employee = db_models.Employee(**employee.model_dump())
     db.add(db_employee)
-    db.commit()
-    db.refresh(db_employee)
+    await db.commit()
+    await db.refresh(db_employee)
     return db_employee
 
 @router.get("/employees/{employee_id}")
@@ -40,7 +36,7 @@ async def get_employee(employee_id: int, db: Session = Depends(get_db)):
 
 @router.post("/schedules")
 async def create_schedule(schedule: ScheduleCreate, db: Session = Depends(get_db), current_user: str = Depends(get_current_user)):
-    db_schedule = db_models.Schedule(**schedule.dict())
+    db_schedule = db_models.Schedule(**schedule.model_dump())
     db.add(db_schedule)
     db.commit()
     db.refresh(db_schedule)
@@ -55,7 +51,7 @@ async def get_schedule(schedule_id: int, db: Session = Depends(get_db)):
 
 @router.post("/schedule-assignments")
 async def create_schedule_assignment(assignment: ScheduleAssignmentCreate, db: Session = Depends(get_db), current_user: str = Depends(get_current_user)):
-    db_assignment = db_models.ScheduleAssignment(**assignment.dict())
+    db_assignment = db_models.ScheduleAssignment(**assignment.model_dump())
     db.add(db_assignment)
     db.commit()
     db.refresh(db_assignment)
@@ -68,7 +64,7 @@ async def get_schedule_assignments(schedule_id: int, db: Session = Depends(get_d
 
 @router.post("/employee-categories")
 async def create_employee_category(category: EmployeeCategoryCreate, db: Session = Depends(get_db), current_user: str = Depends(get_current_user)):
-    db_category = db_models.EmployeeCategory(**category.dict())
+    db_category = db_models.EmployeeCategory(**category.model_dump())
     db.add(db_category)
     db.commit()
     db.refresh(db_category)
@@ -76,7 +72,7 @@ async def create_employee_category(category: EmployeeCategoryCreate, db: Session
 
 @router.post("/work-centers")
 async def create_work_center(work_center: WorkCenterCreate, db: Session = Depends(get_db), current_user: str = Depends(get_current_user)):
-    db_work_center = db_models.WorkCenter(**work_center.dict())
+    db_work_center = db_models.WorkCenter(**work_center.model_dump())
     db.add(db_work_center)
     db.commit()
     db.refresh(db_work_center)
