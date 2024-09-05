@@ -1,0 +1,15 @@
+soap_wsdl_url: ""
+rest_login_url: ""
+username: ""
+password: ""
+rest_posts_url: "htts://test-stand/api/posts"
+selenium_browser: firefox
+selenium_implicitly_wait: 5
+selenium_sleep_time: 5
+selenium_base_url: "https://test-stand"
+reporting_receiver: ""
+reporting_sender: ""
+reporting_password: ""
+reporting_smtp_host: ""
+reporting_smtp_port: 
+reporting_file_path: "./report.html"
