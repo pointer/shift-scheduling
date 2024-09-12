@@ -3,39 +3,59 @@ import ssl
 import logging
 from app.app import app
 import uvicorn
-import sys
+import sys  
 import os
 from os import getenv
+from os.path import join, dirname
+from dotenv import load_dotenv
+from dotenv import dotenv_values
+from fastapi import FastAPI
+
 # import pwd
 import json
 import time
 # import pytz
 from tempfile import gettempdir
 
-from dotenv import load_dotenv
-from dotenv import dotenv_values
 
 if __name__ == "__main__":
     # Load the .env file
-    load_dotenv(".env")
- 
+    dotenv_path = join(dirname(__file__), '.env')
+    # load_dotenv(dotenv_path)
+    local_env = dotenv_values(dotenv_path)
+
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(f"WORKER STARTING with pid {os.getpid()}")
-    HOST = os.environ.get('HOST', '0.0.0.0')
-    PORT = int(os.environ.get('PORT', 8000))
+
+    # Set default values and get environment variables
+    REDIS_HOST = local_env['REDIS_HOST']
+    REDIS_PORT = int(local_env['REDIS_PORT'])
+    SECRET_KEY = local_env['SECRET_KEY']
+    HOST = local_env['SERVER_HOST']
+    PORT = int(local_env['SERVER_PORT'])
+    ROOT_PATH = local_env['ROOT_PATH']
+    # Check if required environment variables are set
+    if not SECRET_KEY:
+        raise ValueError("SECRET_KEY must be set in the environment or .env file")
+
     config = uvicorn.Config(
         app,
         host=HOST,
         port=PORT,
-        # ssl_keyfile=ssl_key,
-        # ssl_certfile=ssl_cert,
-        # ssl_version=ssl.PROTOCOL_TLS,
+        # root_path=ROOT_PATH,
         reload=True, log_level="debug",
         workers=4, limit_max_requests=1024
     )
     server = uvicorn.Server(config)
     server.run()
+
+    # Add this new route
+    @app.get("/")
+    async def root():
+        return {"message": "Welcome to the API"}
+
+
 
 
 

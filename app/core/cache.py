@@ -1,4 +1,9 @@
-import redis
-from app.core.config import settings
+import os
+from redis import Redis
 
-redis_client = redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT)
+USE_REDIS = os.environ.get('USE_REDIS', 'True').lower() == 'true'
+
+if USE_REDIS:
+    redis_client = Redis(host='localhost', port=6379, db=0)
+else:
+    redis_client = None

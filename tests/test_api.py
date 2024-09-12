@@ -1,83 +1,186 @@
+import os
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.app import app
-from app.dependencies import get_db
-from app.core.security import create_access_token
+import asyncio
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from app.app import app
+from app.db.database import get_db, Base
+from app.core.security import create_access_token
+import uuid
+from app.db.models import EmployeeResponse, EmployeeCategory
+
+# Disable Redis for tests
+os.environ['USE_REDIS'] = 'False'
+
+# Create a new async engine for testing
+TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
+engine = create_async_engine(TEST_DATABASE_URL, echo=True)
+
+# Create a new session factory
+TestingSessionLocal = sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False
+)
+
+@pytest.fixture(scope="module")
+def event_loop():
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
+
+@pytest.fixture(scope="module")
+async def test_app():
+    async def override_get_db():
+        async with TestingSessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_get_db
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        yield client
+    app.dependency_overrides.clear()
+
+@pytest.fixture(autouse=True)
+async def create_tables():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
 
 @pytest.fixture
-async def override_get_db():
-    async def _override_get_db():
-        async with AsyncSession(engine) as session:
-            yield session
-    return _override_get_db
-
-# @pytest.fixture
-# async def test_client():
-#     async with AsyncClient(app=app, base_url="http://test") as client:
-#         yield client
-
-@pytest.mark.asyncio
-async def test_create_employee(test_client):
-    token = get_test_token()
-    response = await test_client.post(
-        "/api/employees",
-        json={
-            "name": "John Doe",
-            "category_id": 1,
-            "off_day_preferences": {"Monday": 1},
-            "shift_preferences": [1, 2, 3],
-            "work_center_preferences": [1],
-            "delta": 0.5
-        },
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    assert response.status_code == 200
-    assert response.json()["name"] == "John Doe"
+def unique_id():
+    return lambda: str(uuid.uuid4())
 
 def get_test_token():
     test_user = {"sub": "testuser@example.com"}
     return create_access_token(test_user)
 
-# def test_create_employee():
-#     token = get_test_token()
-#     response = client.post(
-#         "/api/employees",
-#         json={
-#             "name": "John Doe",
-#             "category_id": 1,
-#             "off_day_preferences": {"Monday": 1},
-#             "shift_preferences": [1, 2, 3],
-#             "work_center_preferences": [1],
-#             "delta": 0.5
-#         },
-#         headers={"Authorization": f"Bearer {token}"}
-#     )
-#     assert response.status_code == 200
-#     assert response.json()["name"] == "John Doe"
-
 @pytest.mark.asyncio
-async def test_get_employee(test_client):
+async def test_create_employee_category(test_app: AsyncClient, unique_id):
     token = get_test_token()
-    # First, create an employee
-    create_response = await test_client.post(
-        "/api/employees",
+    response = await test_app.post(
+        "/employee-categories",
         json={
-            "name": "Jane Doe",
-            "category_id": 1,
-            "off_day_preferences": {"Tuesday": 1},
-            "shift_preferences": [2, 1, 3],
-            "work_center_preferences": [1, 2],
-            "delta": 0.5
+            "name": f"Test Category {unique_id()}",
+            "level": 1,
+            "hourly_rate": 15.0
         },
         headers={"Authorization": f"Bearer {token}"}
     )
-    assert create_response.status_code == 200
-    employee_id = create_response.json().get("id")
-    assert employee_id is not None
-
-    # Now, get the employee
-    response = await test_client.get(f"/api/employees/{employee_id}", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
-    assert response.json()["name"] == "Jane Doe"
+    assert "Test Category" in response.json()["name"]
+    assert response.json()["id"] is not None
+    return response
+
+@pytest.mark.asyncio
+async def test_create_employee(test_app: AsyncClient, unique_id):
+    category_response = await test_create_employee_category(test_app, unique_id)
+    category_id = category_response.json()["id"]
+    
+    token = get_test_token()
+    employee_data = {
+        "name": f"John Doe {unique_id()}",
+        "category_id": category_id,
+        "off_day_preferences": {"Monday": 1},
+        "shift_preferences": [1, 2, 3],
+        "work_center_preferences": [1],
+        "delta": 0.5
+    }
+    response = await test_app.post(
+        "/employees",
+        json=employee_data,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200, f"Expected status code 200, but got {response.status_code}. Response text: {response.text}"
+    
+    response_data = response.json()
+    assert response_data is not None, f"Response data is None. Response text: {response.text}"
+    
+    created_employee = EmployeeResponse.model_validate(response_data)
+    assert "John Doe" in created_employee.name
+    assert created_employee.category_id == category_id
+    return created_employee
+
+@pytest.mark.asyncio
+async def test_get_employee(test_app: AsyncClient, unique_id):
+    created_employee = await test_create_employee(test_app, unique_id)
+    employee_id = created_employee.id
+    assert employee_id is not None, "Created employee ID is None"
+
+    token = get_test_token()
+    response = await test_app.get(f"/employees/{employee_id}", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200, f"Expected status code 200, but got {response.status_code}. Response text: {response.text}"
+    
+    response_data = response.json()
+    assert response_data is not None, f"Response data is None. Response text: {response.text}"
+    
+    retrieved_employee = EmployeeResponse.model_validate(response_data)
+    assert retrieved_employee.name == created_employee.name
+    assert retrieved_employee.category_id == created_employee.category_id
+
+@pytest.mark.asyncio
+async def test_create_task(test_app, unique_id):
+    token = get_test_token()
+    response = await test_app.post(
+        "/tasks",
+        json={
+            "title": f"Test Task {unique_id()}",
+            "description": "This is a test task"
+        },
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200
+    assert "Test Task" in response.json()["title"]
+    assert response.json()["id"] is not None
+    return response.json()
+
+@pytest.mark.asyncio
+async def test_get_task(test_app, unique_id):
+    created_task = await test_create_task(test_app, unique_id)
+    task_id = created_task["id"]
+    
+    token = get_test_token()
+    response = await test_app.get(f"/tasks/{task_id}", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    assert response.json()["id"] == task_id
+    assert response.json()["title"] == created_task["title"]
+
+@pytest.mark.asyncio
+async def test_get_tasks(test_app, unique_id):
+    await test_create_task(test_app, unique_id)
+    await test_create_task(test_app, unique_id)
+    
+    token = get_test_token()
+    response = await test_app.get("/tasks", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    assert len(response.json()) >= 2
+
+@pytest.mark.asyncio
+async def test_update_task(test_app, unique_id):
+    created_task = await test_create_task(test_app, unique_id)
+    task_id = created_task["id"]
+    
+    token = get_test_token()
+    new_title = f"Updated Task {unique_id()}"
+    response = await test_app.put(
+        f"/tasks/{task_id}",
+        json={"title": new_title},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200
+    assert response.json()["id"] == task_id
+    assert response.json()["title"] == new_title
+
+@pytest.mark.asyncio
+async def test_delete_task(test_app, unique_id):
+    created_task = await test_create_task(test_app, unique_id)
+    task_id = created_task["id"]
+    
+    token = get_test_token()
+    response = await test_app.delete(f"/tasks/{task_id}", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 204
+    
+    # Verify that the task has been deleted
+    get_response = await test_app.get(f"/tasks/{task_id}", headers={"Authorization": f"Bearer {token}"})
+    assert get_response.status_code == 404

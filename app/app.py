@@ -20,7 +20,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, ORJSONResponse
 from app.api.routes import router as api_router
 from app.core.config import settings
-from app.db.database import engine, Base
+from app.db.database import sessionmanager , get_db   #engine, Base
 # from starlette.requests import Headers, Request
 # from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 # from starlette.responses import Response
@@ -43,23 +43,13 @@ logging.basicConfig(level=logging.INFO,
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+async def app_lifespan(app: FastAPI):
+    # Initialize the database session manager
+    await sessionmanager.init_db()
     yield
+    await sessionmanager.close()
 
-# ssl_cert = os.getenv("CERT_FILE", '../certs/example.com+5.pem')
-# ssl_key = os.getenv("KEY_FILE", '../certs/example.com+5-key.pem')
-# if not os.path.isfile(ssl_cert) or not os.path.isfile(ssl_key):
-#     from os.path import dirname as up
-
-#     dir = up(up(up(__file__)))
-
-#     cert_file_path = os.path.join(dir, "certs")
-#     ssl_cert = os.path.join(cert_file_path, "example.com+5.pem")
-#     ssl_key = os.path.join(cert_file_path, "example.com+5-key.pem")
-# app = FastAPI(ssl_keyfile=ssl_key, ssl_certfile=ssl_cert, lifespan=lifespan)
-app = FastAPI(title=settings.PROJECT_NAME,lifespan=lifespan)
+app = FastAPI(title=settings.PROJECT_NAME, lifespan=app_lifespan)
 # app.add_middleware(HTTPSRedirectMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -73,7 +63,7 @@ app.add_middleware(
 #     async with engine.begin() as conn:
 #         await conn.run_sync(Base.metadata.create_all)
 
-app.include_router(api_router, prefix="/api")
+app.include_router(api_router) #, prefix="/api")
 
 class LoginResponse(BaseModel):
     access_token: str
@@ -90,15 +80,15 @@ class RegisterResponse(BaseModel):
 
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    async with async_session_maker() as session:
+    async for session in sessionmanager.get_db():
         yield session
 
 
 @app.middleware("http") #("https")
 async def log_request(request: Request, call_next):
     # Log the request details
-    # logger.info(f"Received request: {request.method} {request.url}")
-    # logger.info(f"Headers: {dict(request.headers)}")
+    logger.info(f"Received request: {request.method} {request.url}")
+    logger.info(f"Headers: {dict(request.headers)}")
 
     # For POST requests, log the body
     if request.method == "POST":
