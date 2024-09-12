@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.applications import Starlette
@@ -19,6 +19,7 @@ from sqlalchemy import select
 from datetime import datetime
 import os
 from typing import List
+from app.utils.fake_data import generate_fake_tasks
 
 router = APIRouter()
 
@@ -176,4 +177,23 @@ async def delete_task(task_id: int, db: AsyncSession = Depends(get_db), current_
     await db.delete(db_task)
     await db.commit()
     return {"ok": True}
+
+@router.post("/tasks/generate-fake", response_model=List[TaskResponse])
+async def create_fake_tasks(
+    num_tasks: int = Query(10, description="Number of fake tasks to generate"),
+    db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    fake_tasks = generate_fake_tasks(num_tasks)
+    db_tasks = []
+    for task in fake_tasks:
+        db_task = Tasks(**task.model_dump())
+        db.add(db_task)
+        db_tasks.append(db_task)
+    
+    await db.commit()
+    for task in db_tasks:
+        await db.refresh(task)
+    
+    return db_tasks
 
