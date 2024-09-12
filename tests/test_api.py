@@ -184,3 +184,40 @@ async def test_delete_task(test_app, unique_id):
     # Verify that the task has been deleted
     get_response = await test_app.get(f"/tasks/{task_id}", headers={"Authorization": f"Bearer {token}"})
     assert get_response.status_code == 404
+
+@pytest.mark.asyncio
+async def test_generate_fake_data(test_app: AsyncClient):
+    token = get_test_token()
+    response = await test_app.post(
+        "/generate-fake-data",
+        params={
+            "num_categories": 3,
+            "num_work_centers": 2,
+            "num_employees": 10
+        },
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert "message" in data
+    assert data["message"] == "Fake data generated successfully"
+    assert "categories_created" in data
+    assert data["categories_created"] == 3
+    assert "work_centers_created" in data
+    assert data["work_centers_created"] == 2
+    assert "employees_created" in data
+    assert data["employees_created"] == 10
+
+    # Verify that the data was actually created in the database
+    categories_response = await test_app.get("/employee-categories", headers={"Authorization": f"Bearer {token}"})
+    assert categories_response.status_code == 200
+    assert len(categories_response.json()) == 3
+
+    work_centers_response = await test_app.get("/work-centers", headers={"Authorization": f"Bearer {token}"})
+    assert work_centers_response.status_code == 200
+    assert len(work_centers_response.json()) == 2
+
+    employees_response = await test_app.get("/employees", headers={"Authorization": f"Bearer {token}"})
+    assert employees_response.status_code == 200
+    assert len(employees_response.json()) == 10

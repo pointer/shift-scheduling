@@ -19,7 +19,7 @@ from sqlalchemy import select
 from datetime import datetime
 import os
 from typing import List
-from app.utils.fake_data import generate_fake_tasks
+from app.utils.fake_data import generate_fake_tasks, generate_fake_employee_categories, generate_fake_work_centers, generate_fake_employees
 
 router = APIRouter()
 
@@ -107,12 +107,6 @@ async def create_schedule_assignment(assignment: ScheduleAssignmentCreate, db: A
 
 @router.get("/schedules/{schedule_id}/assignments")
 async def get_schedule_assignments(schedule_id: int, db: AsyncSession = Depends(get_db)):
-    # statement = select(db_models.ScheduleAssignment).where(
-    #     db_models.ScheduleAssignment.schedule_id == schedule_id
-    # )
-    # results = await db.execute(statement)
-    
-    # return results.scalars().all()
     result = await db.execute(select(db_models.ScheduleAssignment).filter_by(schedule_id=schedule_id))
     assignments = result.scalars().all()
     return assignments
@@ -197,3 +191,35 @@ async def create_fake_tasks(
     
     return db_tasks
 
+@router.post("/generate-fake-data")
+async def generate_fake_data(
+    db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+    num_categories: int = Query(5, description="Number of employee categories to generate"),
+    num_work_centers: int = Query(3, description="Number of work centers to generate"),
+    num_employees: int = Query(20, description="Number of employees to generate")
+):
+    # Generate fake employee categories
+    categories = generate_fake_employee_categories(num_categories)
+    for category in categories:
+        db.add(category)
+    await db.commit()
+    
+    # Generate fake work centers
+    work_centers = generate_fake_work_centers(num_work_centers)
+    for center in work_centers:
+        db.add(center)
+    await db.commit()
+    
+    # Generate fake employees
+    employees = generate_fake_employees(num_employees, categories, work_centers)
+    for employee in employees:
+        db.add(employee)
+    await db.commit()
+    
+    return {
+        "message": "Fake data generated successfully",
+        "categories_created": len(categories),
+        "work_centers_created": len(work_centers),
+        "employees_created": len(employees)
+    }
