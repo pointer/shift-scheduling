@@ -232,3 +232,13 @@ class TaskResponse(TaskBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+# Add this import if it's not already present
+from typing import Dict, List
+
+class WorkCenterResponse(BaseModel):
+    id: int
+    name: str
+    demand: Dict[str, Dict[str, List[int]]]
+
+    model_config = ConfigDict(from_attributes=True)

@@ -6,8 +6,9 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from app.db.models import (
     EmployeeCreate, ShiftCreate, ScheduleCreate, ScheduleAssignmentCreate,
-    EmployeeCategoryCreate, EmployeeCategoryResponse, WorkCenterCreate,
-    Employee, EmployeeResponse, Tasks, TaskCreate, TaskUpdate, TaskResponse
+    EmployeeCategoryCreate, EmployeeCategoryResponse, WorkCenterCreate, WorkCenterResponse,
+    Employee, EmployeeResponse, Tasks, TaskCreate, TaskUpdate, TaskResponse,
+    EmployeeCategory, WorkCenter  # Add these two imports
 )
 from app.db.database import get_db
 from app.db import models as db_models
@@ -15,11 +16,11 @@ from worker import generate_schedule_task
 from app.core.security import get_current_user
 from app.core.cache import redis_client, USE_REDIS
 import json
-from sqlalchemy import select
+from sqlalchemy import select, text
 from datetime import datetime
 import os
 from typing import List
-from app.utils.fake_data import generate_fake_tasks, generate_fake_employee_categories, generate_fake_work_centers, generate_fake_employees
+import random
 
 router = APIRouter()
 
@@ -119,13 +120,13 @@ async def create_employee_category(category: EmployeeCategoryCreate, db: AsyncSe
     await db.refresh(db_category)
     return EmployeeCategoryResponse.model_validate(db_category)
 
-@router.post("/work-centers")
+@router.post("/work-centers", response_model=WorkCenterResponse)
 async def create_work_center(work_center: WorkCenterCreate, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
     db_work_center = db_models.WorkCenter(**work_center.model_dump())
     db.add(db_work_center)
     await db.commit()
     await db.refresh(db_work_center)
-    return db_work_center
+    return WorkCenterResponse.model_validate(db_work_center)
 
 @router.post("/tasks", response_model=TaskResponse)
 async def create_task(task: TaskCreate, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
@@ -200,26 +201,74 @@ async def generate_fake_data(
     num_employees: int = Query(20, description="Number of employees to generate")
 ):
     # Generate fake employee categories
-    categories = generate_fake_employee_categories(num_categories)
-    for category in categories:
-        db.add(category)
-    await db.commit()
-    
+    categories_sql = """
+    INSERT INTO employee_categories (name, level, hourly_rate)
+    VALUES (:name, :level, :hourly_rate)
+    """
+    categories = [
+        {"name": f"Category {i}", "level": random.randint(1, 5), "hourly_rate": round(random.uniform(10, 50), 2)}
+        for i in range(1, num_categories + 1)
+    ]
+    await db.execute(text(categories_sql), categories)
+
     # Generate fake work centers
-    work_centers = generate_fake_work_centers(num_work_centers)
-    for center in work_centers:
-        db.add(center)
-    await db.commit()
-    
+    work_centers_sql = """
+    INSERT INTO work_centers (name, demand)
+    VALUES (:name, :demand)
+    """
+    work_centers = [
+        {
+            "name": f"Work Center {i}",
+            "demand": json.dumps({
+                "weekday": {str(k): [random.randint(1, 5) for _ in range(3)] for k in range(1, 6)},
+                "weekend": {str(k): [random.randint(1, 3) for _ in range(3)] for k in range(1, 6)}
+            })
+        }
+        for i in range(1, num_work_centers + 1)
+    ]
+    await db.execute(text(work_centers_sql), work_centers)
+
     # Generate fake employees
-    employees = generate_fake_employees(num_employees, categories, work_centers)
-    for employee in employees:
-        db.add(employee)
+    employees_sql = """
+    INSERT INTO employees (name, category_id, off_day_preferences, shift_preferences, work_center_preferences, delta)
+    VALUES (:name, :category_id, :off_day_preferences, :shift_preferences, :work_center_preferences, :delta)
+    """
+    employees = [
+        {
+            "name": f"Employee {i}",
+            "category_id": random.randint(1, num_categories),
+            "off_day_preferences": json.dumps({day: random.randint(1, 7) for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']}),
+            "shift_preferences": json.dumps([random.randint(1, 3) for _ in range(3)]),
+            "work_center_preferences": json.dumps([random.randint(1, num_work_centers) for _ in range(random.randint(1, num_work_centers))]),
+            "delta": round(random.uniform(0, 1), 2)
+        }
+        for i in range(1, num_employees + 1)
+    ]
+    await db.execute(text(employees_sql), employees)
+
     await db.commit()
-    
+
     return {
         "message": "Fake data generated successfully",
         "categories_created": len(categories),
         "work_centers_created": len(work_centers),
         "employees_created": len(employees)
     }
+
+@router.get("/employee-categories", response_model=List[EmployeeCategoryResponse])
+async def get_employee_categories(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(EmployeeCategory))
+    categories = result.scalars().all()
+    return [EmployeeCategoryResponse.model_validate(category) for category in categories]
+
+@router.get("/work-centers", response_model=List[WorkCenterResponse])
+async def get_work_centers(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(WorkCenter))
+    work_centers = result.scalars().all()
+    return [WorkCenterResponse.model_validate(work_center) for work_center in work_centers]
+
+@router.get("/employees", response_model=List[EmployeeResponse])
+async def get_employees(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Employee))
+    employees = result.scalars().all()
+    return [EmployeeResponse.model_validate(employee) for employee in employees]
