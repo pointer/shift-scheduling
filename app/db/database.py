@@ -136,5 +136,5 @@ async def get_db():
 
 # async def get_db():
 #     async with sessionmanager.session() as session:
-#         ic(session)
+#         #ic(session)
 #         yield session

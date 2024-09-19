@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
+import icecream as ic
 from app.db.models import (
     EmployeeCreate, ShiftCreate, ScheduleCreate, ScheduleAssignmentCreate,
     EmployeeCategoryCreate, EmployeeCategoryResponse, WorkCenterCreate, WorkCenterResponse,
@@ -21,8 +22,14 @@ from datetime import datetime
 import os
 from typing import List
 import random
+from sqlalchemy.orm import selectinload
+from app.utils.fake_data import generate_fake_tasks
+from app.custom_encoder import custom_jsonable_encoder
+from app.db import crud  # Adjust the import path as needed
+import traceback
 
 router = APIRouter()
+crud = crud.Crud()  # Create an instance of Crud
 
 # @router.post("/employees", response_model=db_models.Employee)
 # @router.post("/employees", response_model=db_models.EmployeeResponse)
@@ -89,14 +96,25 @@ async def create_schedule(schedule: ScheduleCreate, db: AsyncSession = Depends(g
 
 @router.get("/schedules/{schedule_id}")
 async def get_schedule(schedule_id: int, db: AsyncSession = Depends(get_db)):
-    
-    schedule = await db_models.Schedule.get(db, schedule_id)
-    return schedule
-    # async with db:
-    #     schedule = db.query(db_models.Schedule).filter(db_models.Schedule.id == schedule_id).first()
-    #     if schedule is None:
-    #         raise HTTPException(status_code=404, detail="Schedule not found")
-    #     return schedule
+    try:
+        query = select(db_models.Schedule).options(selectinload(db_models.Schedule.assignments)).where(db_models.Schedule.id == schedule_id)
+        result = await db.execute(query)
+        schedule = result.scalar_one_or_none()
+
+        if schedule is None:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+
+        print(f"Schedule found: {schedule}")
+        print(f"Schedule assignments: {schedule.assignments}")
+
+        encoded_schedule = custom_jsonable_encoder(schedule, max_depth=5)
+        print(f"Encoded schedule: {encoded_schedule}")
+        return JSONResponse(content=encoded_schedule)
+    except Exception as e:
+        print(f"Error in get_schedule: {str(e)}")
+        print(f"Error type: {type(e)}")
+        print(f"Error traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.post("/schedule-assignments")
 async def create_schedule_assignment(assignment: ScheduleAssignmentCreate, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
@@ -108,9 +126,27 @@ async def create_schedule_assignment(assignment: ScheduleAssignmentCreate, db: A
 
 @router.get("/schedules/{schedule_id}/assignments")
 async def get_schedule_assignments(schedule_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(db_models.ScheduleAssignment).filter_by(schedule_id=schedule_id))
-    assignments = result.scalars().all()
-    return assignments
+    try:
+        result = await db.execute(select(db_models.ScheduleAssignment).filter_by(schedule_id=schedule_id))
+        assignments = result.scalars().all()
+        
+        # Manually serialize the assignments
+        serialized_assignments = []
+        for assignment in assignments:
+            serialized_assignment = {
+                "id": assignment.id,
+                "schedule_id": assignment.schedule_id,
+                "shift_id": assignment.shift_id,
+                # Add other fields as needed, but avoid circular references
+            }
+            serialized_assignments.append(serialized_assignment)
+        
+        return JSONResponse(content=serialized_assignments)
+    except Exception as e:
+        print(f"Error in get_schedule_assignments: {str(e)}")
+        print(f"Error type: {type(e)}")
+        print(f"Error traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.post("/employee-categories", response_model=EmployeeCategoryResponse)
 async def create_employee_category(category: EmployeeCategoryCreate, db: AsyncSession = Depends(get_db), current_user: str = Depends(get_current_user)):
@@ -239,14 +275,14 @@ async def generate_fake_data(
             "category_id": random.randint(1, num_categories),
             "off_day_preferences": json.dumps({day: random.randint(1, 7) for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']}),
             "shift_preferences": json.dumps([random.randint(1, 3) for _ in range(3)]),
-            "work_center_preferences": json.dumps([random.randint(1, num_work_centers) for _ in range(random.randint(1, num_work_centers))]),
+            "work_center_preferences": json.dumps(random.sample(range(1, num_work_centers + 1), random.randint(1, num_work_centers))),
             "delta": round(random.uniform(0, 1), 2)
         }
         for i in range(1, num_employees + 1)
     ]
-    await db.execute(text(employees_sql), employees)
+    # await db.execute(text(employees_sql), employees)
 
-    await db.commit()
+    # await db.commit()
 
     return {
         "message": "Fake data generated successfully",
@@ -265,10 +301,11 @@ async def get_employee_categories(db: AsyncSession = Depends(get_db)):
 async def get_work_centers(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(WorkCenter))
     work_centers = result.scalars().all()
-    return [WorkCenterResponse.model_validate(work_center) for work_center in work_centers]
+    return [WorkCenterResponse.model_validate(work_center.__dict__) for work_center in work_centers]
 
 @router.get("/employees", response_model=List[EmployeeResponse])
 async def get_employees(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Employee))
-    employees = result.scalars().all()
-    return [EmployeeResponse.model_validate(employee) for employee in employees]
+    employees = await crud.get_employees(db)
+    if employees is None:
+        return []
+    return [EmployeeResponse.model_validate(employee.__dict__) for employee in employees]

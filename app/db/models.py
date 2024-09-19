@@ -9,6 +9,7 @@ from sqlalchemy import ForeignKey, Column
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
 from sqlalchemy.orm import DeclarativeBase
@@ -38,7 +39,8 @@ class Base(AsyncAttrs, DeclarativeBase):
 class EmployeeCategory(Base):
     __tablename__ = "employee_categories"
 
-    id = Column(Integer, primary_key=True, index=True)
+    # id = Column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)   
     name = Column(String(100), unique=True, index=True)  # Specify length for VARCHAR
     level = Column(Integer)  # Add this line
     hourly_rate = Column(Float)  # Add this line
@@ -53,15 +55,15 @@ class EmployeeCategory(Base):
 
 class WorkCenter(Base):
     __tablename__ = "work_centers"
-
-    id = Column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)   
+    # id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), unique=True, index=True)  # Specify length for VARCHAR
     demand = Column(JSON)  # Add this line
 
 class Employee(Base):
     __tablename__ = "employees"
-
-    id = Column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)   
+    # id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), index=True)  # Specify length for VARCHAR
     category_id = Column(Integer, ForeignKey("employee_categories.id"))
     off_day_preferences = Column(JSON)
@@ -83,6 +85,7 @@ class Shift(Base):
     
     employee = relationship("Employee", back_populates="shifts", lazy="selectin")
     work_center = relationship("WorkCenter", lazy="selectin")
+    assignment = relationship("ScheduleAssignment", back_populates="shift", uselist=False, lazy="selectin")
 
 class ScheduleStatus(str, PyEnum):  
     DRAFT = "draft"  
@@ -92,22 +95,21 @@ class ScheduleStatus(str, PyEnum):
 class Schedule(Base):
     __tablename__ = "schedules"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    start_date: Mapped[datetime] = mapped_column(Date)
-    end_date: Mapped[datetime] = mapped_column(Date)
-    status: Mapped[ScheduleStatus] = mapped_column(Enum(ScheduleStatus), default=ScheduleStatus.DRAFT)
-    # status = Column(Enum('draft', 'published', 'archived'), default='draft')
-    # status = Column(Enum('draft', 'published', 'archived'), default='draft')
+    id = Column(Integer, primary_key=True, index=True)
+    start_date = Column(Date)
+    end_date = Column(Date)
+    assignments = relationship("ScheduleAssignment", back_populates="schedule", lazy="selectin")
 
 class ScheduleAssignment(Base):
     __tablename__ = "schedule_assignments"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    schedule_id: Mapped[int] = mapped_column(Integer, ForeignKey("schedules.id"))
-    shift_id: Mapped[int] = mapped_column(Integer, ForeignKey("shifts.id"))
+    id = Column(Integer, primary_key=True, index=True)
+    schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=False)
+    shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=False)
 
-    schedule = relationship("Schedule", lazy="selectin")
-    shift = relationship("Shift", lazy="selectin")
+    schedule = relationship("Schedule", back_populates="assignments", lazy="selectin")
+    shift = relationship("Shift", back_populates="assignment", lazy="selectin")
+
 class EmployeeCategoryCreate(BaseModel):
     name: str   
     level: int
@@ -156,7 +158,8 @@ class EmployeeResponse(BaseModel):
     work_center_preferences: List[int]
     delta: float
 
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
   
 # Uncomment and update the User model
 class User(Base):
@@ -193,10 +196,12 @@ class TaskStatus(PyEnum):
 
 class Tasks(Base):
     __tablename__ = "tasks"
-
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, index=True)
-    description = Column(String)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)  # Specify length
+    # id = Column(Integer, primary_key=True, index=True)
+    # title = Column(String(100), index=True)
+    # description = Column(String)
+    description: Mapped[str] = mapped_column(String(255), unique=False, nullable=False) 
     # status = Column(String)  # Add this line
     status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), default=TaskStatus.NOT_STARTED)
    
@@ -231,7 +236,9 @@ class TaskResponse(TaskBase):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
+  
 
 # Add this import if it's not already present
 from typing import Dict, List
@@ -241,4 +248,22 @@ class WorkCenterResponse(BaseModel):
     name: str
     demand: Dict[str, Dict[str, List[int]]]
 
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
+  
+    
+class GeneratedSchedule(Base):
+    __tablename__ = "generated_schedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    work_center_id = Column(Integer, ForeignKey("work_centers.id"), nullable=False)
+    shift_start = Column(DateTime, nullable=False)
+    shift_end = Column(DateTime, nullable=False)
+
+    schedule = relationship("Schedule", back_populates="generated_assignments")
+    employee = relationship("Employee")
+    work_center = relationship("WorkCenter")
+
+Schedule.generated_assignments = relationship("GeneratedSchedule", back_populates="schedule")

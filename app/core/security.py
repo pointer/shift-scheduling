@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from app.core.config import settings
 import warnings
+from icecream import ic
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="jose.jwt")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -26,7 +27,9 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        #ic(payload)
         username: str = payload.get("sub")
+        #ic(username)
         if username is None:
             raise credentials_exception
     except JWTError:

@@ -18,10 +18,9 @@ import time
 from tempfile import gettempdir
 
 
-if __name__ == "__main__":
+def run_server():
     # Load the .env file
     dotenv_path = join(dirname(__file__), '.env')
-    # load_dotenv(dotenv_path)
     local_env = dotenv_values(dotenv_path)
 
     logging.basicConfig(level=logging.INFO,
@@ -50,43 +49,12 @@ if __name__ == "__main__":
     server = uvicorn.Server(config)
     server.run()
 
-    # Add this new route
-    @app.get("/")
-    async def root():
-        return {"message": "Welcome to the API"}
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the API"}
 
-
-
-
-
-
-
-# from fastapi import FastAPI #, Lifespan
-# from app.api.routes import router as api_router
-# from app.core.config import settings
-# from app.db.database import engine, Base
-# import asyncio
-
-# app = FastAPI(title=settings.PROJECT_NAME)
-
-# async def on_startup():
-#     async with engine.begin() as conn:
-#         await conn.run_sync(Base.metadata.create_all)
-
-# app.include_router(api_router, prefix="/api")
-
-# @app.on_event("startup")
-# async def on_startup():
-#     async with engine.begin() as conn:
-#         await conn.run_sync(Base.metadata.create_all)
-
-# app.include_router(api_router, prefix="/api")
-
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="0.0.0.0", port=8000)
-#     # uvicorn main:app --reload --lifespan on
-
+if __name__ == "__main__":
+    run_server()
 
 # # alembic revision --autogenerate -m "Initial migration"
 # # alembic upgrade head

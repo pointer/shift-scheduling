@@ -43,13 +43,26 @@ def generate_fake_work_centers(num_centers: int = 7) -> List[WorkCenter]:
 def generate_fake_employees(categories: List[EmployeeCategory], work_centers: List[WorkCenter], num_employees: int = 20) -> List[Employee]:
     employees = []
     for _ in range(num_employees):
+        # Ensure each employee has at least one work center preference
+        work_center_preferences = random.sample([center.id for center in work_centers], k=random.randint(1, len(work_centers)))
         employee = Employee(
             name=fake.name(),
             category_id=random.choice(categories).id,
             off_day_preferences={day: random.randint(1, 7) for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']},
             shift_preferences=[random.randint(1, 3) for _ in range(3)],
-            work_center_preferences=[center.id for center in random.sample(work_centers, k=random.randint(1, len(work_centers)))],
+            work_center_preferences=work_center_preferences,
             delta=round(random.uniform(0, 1), 2)
+        )
+        employees.append(employee)
+    return employees
+
+def create_fake_employees(num_employees, num_work_centers):
+    employees = []
+    for _ in range(num_employees):
+        work_center_preferences = random.sample(range(1, num_work_centers + 1), k=random.randint(1, num_work_centers))
+        employee = Employee(
+            # ... other fields ...
+            work_center_preferences=work_center_preferences
         )
         employees.append(employee)
     return employees

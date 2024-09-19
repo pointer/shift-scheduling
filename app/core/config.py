@@ -16,7 +16,7 @@ for root, dirs, files in os.walk(env_file):
 local_env = dotenv_values(dotenv_path)
 # local_env = dotenv_values(dotenv_path)
 
-# ic(local_env)
+# #ic(local_env)
 class Config:
     pass
 
@@ -31,7 +31,7 @@ class Config:
 #         ),
 #     )        
 # settings = Config
-# ic(settings.DB_CONFIG)
+# #ic(settings.DB_CONFIG)
 class Settings(BaseSettings):
     DB_USER: str
     DB_PASS: str

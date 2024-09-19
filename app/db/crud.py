@@ -1,3 +1,6 @@
+from sqlalchemy import select
+from app.db.models import Employee  # Add this import
+
 class Crud:
     @classmethod
     def read_by_id(cls, db_session, _id):
@@ -28,3 +31,13 @@ class Crud:
         db_session.delete(self)
         db_session.commit()
         return self
+
+    # Add your CRUD operations here
+    async def get_employees(self,db):
+        # Implement the get_employees function
+        pass
+
+    @classmethod
+    async def get_employees(cls, db_session):
+        result = await db_session.execute(select(Employee))
+        return result.scalars().all()
