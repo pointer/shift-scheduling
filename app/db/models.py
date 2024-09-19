@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 import logging
 logging.basicConfig()    
 logging.getLogger("sqlalchemy.engine").setLevel(logging.DEBUG)
+from app.core.config import settings
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -212,7 +213,7 @@ class Tasks(Base):
 
 # Add this function at the end of the file
 async def create_tables():
-    engine = create_async_engine("mysql+aiomysql://root:root@localhost/shift_scheduling")
+    engine = create_async_engine(settings.DATABASE_URL,)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
