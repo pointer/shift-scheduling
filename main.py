@@ -1,4 +1,7 @@
 from icecream import ic
+import MySQLdb
+# from asyncmy import connect
+# from asyncmy.cursors import DictCursor
 import ssl
 import logging
 from app.app import app
@@ -31,22 +34,32 @@ def run_server():
     REDIS_HOST = local_env['REDIS_HOST']
     REDIS_PORT = int(local_env['REDIS_PORT'])
     SECRET_KEY = local_env['SECRET_KEY']
-    HOST = local_env['SERVER_HOST']
-    PORT = int(local_env['SERVER_PORT'])
+    SERVER_HOST = local_env['SERVER_HOST']
+    SERVER_PORT = int(local_env['SERVER_PORT'])
     ROOT_PATH = local_env['ROOT_PATH']
+    DB_NAME = local_env['DB_NAME']
+    DB_PASS = local_env['DB_PASS']
+    DB_USER = local_env['DB_USER']    
+    DB_HOST = local_env['DB_HOST']
+    DB_PORT = int(local_env['DB_PORT'])    
     # Check if required environment variables are set
     if not SECRET_KEY:
         raise ValueError("SECRET_KEY must be set in the environment or .env file")
 
     config = uvicorn.Config(
         app,
-        host=HOST,
-        port=PORT,
+        host=SERVER_HOST,
+        port=SERVER_PORT,
         # root_path=ROOT_PATH,
         reload=True, log_level="debug",
         workers=4, limit_max_requests=1024
     )
     server = uvicorn.Server(config)
+    db = MySQLdb.connect(f'{DB_HOST}, {DB_USER}, {DB_PASS}' )
+    cursor = db.cursor()
+    cursor.execute("SET sql_notes = 0; ")
+    # create db here....
+    cursor.execute(f'create database IF NOT EXISTS {DB_NAME}')
     server.run()
 
 @app.get("/")

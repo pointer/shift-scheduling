@@ -20,7 +20,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, ORJSONResponse
 from app.api.routes import router as api_router
 from app.core.config import settings
-from app.db.database import sessionmanager , get_db   #engine, Base
+from app.db.database import sessionmanager
 # from starlette.requests import Headers, Request
 # from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 # from starlette.responses import Response
@@ -48,6 +48,13 @@ async def app_lifespan(app: FastAPI):
     await sessionmanager.init_db()
     yield
     await sessionmanager.close()
+
+# @asynccontextmanager
+# async def app_lifespan(app: FastAPI):
+#     async with engine.begin() as conn:
+#         await conn.run_sync(Base.metadata.create_all)
+#     yield
+
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=app_lifespan)
 # app.add_middleware(HTTPSRedirectMiddleware)

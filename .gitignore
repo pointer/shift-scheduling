@@ -165,4 +165,5 @@ cython_debug/
 log.txt
 test.db
 data/shift_scheduling.db
-pytest_output.txt
+*.txt
+*.lob
